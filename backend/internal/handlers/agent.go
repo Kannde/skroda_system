@@ -26,8 +26,8 @@ func (h *AgentHandler) List(c *gin.Context) {
 }
 
 func (h *AgentHandler) GetProfile(c *gin.Context) {
-	userID, _ := c.Get("user_id")
-	agent, err := h.agentService.GetAgentByUserID(c.Request.Context(), userID.(string))
+	userID, _ := getUserID(c)
+	agent, err := h.agentService.GetAgentByUserID(c.Request.Context(), userID.String())
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "agent profile not found"})
 		return

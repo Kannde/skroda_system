@@ -20,22 +20,24 @@ func NewPaymentService(paymentRepo *repository.PaymentRepository, txRepo *reposi
 }
 
 func (s *PaymentService) Initiate(ctx context.Context, payerIDStr string, req *models.InitiatePaymentRequest) (*models.Payment, error) {
-	tx, err := s.txRepo.GetByID(ctx, req.TransactionID)
+	txn, err := s.txRepo.GetByID(ctx, req.TransactionID)
 	if err != nil {
 		return nil, err
 	}
 
 	payerID, _ := uuid.Parse(payerIDStr)
 	payment := &models.Payment{
-		ID:            uuid.New(),
-		TransactionID: req.TransactionID,
-		PayerID:       payerID,
-		Amount:        tx.Amount,
-		Currency:      tx.Currency,
-		Provider:      req.Provider,
-		Status:        models.PaymentPending,
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
+		TransactionID:  req.TransactionID,
+		PaymentType:    models.PayTypeEscrowDeposit,
+		PaymentMethod:  models.PaymentMethod(req.PaymentMethod),
+		Status:         models.PayPending,
+		Amount:         txn.Amount,
+		Currency:       txn.Currency,
+		PayerID:        payerID,
+		IdempotencyKey: req.TransactionID.String() + ":" + payerIDStr + ":" + string(time.Now().UTC().Format("20060102")),
+		InitiatedAt:    time.Now(),
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
 	}
 
 	if err := s.paymentRepo.Create(ctx, payment); err != nil {

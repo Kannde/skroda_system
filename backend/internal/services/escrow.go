@@ -48,7 +48,7 @@ func (s *EscrowService) CreateTransaction(ctx context.Context, sellerIDStr strin
 	desc := req.Description
 	buyerCity := req.BuyerCity
 
-	tx := &models.Transaction{
+	txn := &models.Transaction{
 		ID:              uuid.New(),
 		ReferenceCode:   utils.GenerateReferenceCode(),
 		TransactionType: models.TransactionType(req.TransactionType),
@@ -69,11 +69,10 @@ func (s *EscrowService) CreateTransaction(ctx context.Context, sellerIDStr strin
 		UpdatedAt:       time.Now(),
 	}
 
-	if err := s.txRepo.Create(ctx, tx); err != nil {
+	if err := s.txRepo.Create(ctx, txn); err != nil {
 		return nil, err
 	}
-
-	return tx, nil
+	return txn, nil
 }
 
 func (s *EscrowService) GetTransaction(ctx context.Context, id uuid.UUID) (*models.Transaction, error) {
@@ -85,60 +84,53 @@ func (s *EscrowService) ListUserTransactions(ctx context.Context, userIDStr stri
 	if err != nil {
 		return nil, errors.New("invalid user id")
 	}
-	return s.txRepo.ListByUser(ctx, userID)
+	txns, _, err := s.txRepo.ListByUser(ctx, userID, "", 50, 0)
+	return txns, err
 }
 
 func (s *EscrowService) Transition(ctx context.Context, txID uuid.UUID, userIDStr string, target models.TransactionStatus) error {
-	tx, err := s.txRepo.GetByID(ctx, txID)
+	txn, err := s.txRepo.GetByID(ctx, txID)
 	if err != nil {
 		return err
 	}
-
-	if !tx.Status.CanTransitionTo(target) {
-		return errors.New("invalid status transition from " + string(tx.Status) + " to " + string(target))
+	if !txn.Status.CanTransitionTo(target) {
+		return errors.New("invalid status transition from " + string(txn.Status) + " to " + string(target))
 	}
-
-	return s.txRepo.UpdateStatus(ctx, txID, target)
+	return s.txRepo.UpdateStatus(ctx, txID, target, "updated_at")
 }
 
 func (s *EscrowService) ConfirmDelivery(ctx context.Context, txID uuid.UUID, userIDStr string) error {
-	tx, err := s.txRepo.GetByID(ctx, txID)
+	txn, err := s.txRepo.GetByID(ctx, txID)
 	if err != nil {
 		return err
 	}
-
-	if tx.Status != models.TxStatusInspection {
+	if txn.Status != models.TxStatusInspection {
 		return errors.New("transaction is not in inspection period")
 	}
-
 	buyerID, _ := uuid.Parse(userIDStr)
-	if tx.BuyerID == nil || *tx.BuyerID != buyerID {
+	if txn.BuyerID == nil || *txn.BuyerID != buyerID {
 		return errors.New("only the buyer can confirm delivery")
 	}
-
-	return s.txRepo.UpdateStatus(ctx, txID, models.TxStatusCompleted)
+	return s.txRepo.UpdateStatus(ctx, txID, models.TxStatusCompleted, "completed_at")
 }
 
 func (s *EscrowService) CancelTransaction(ctx context.Context, txID uuid.UUID, userIDStr string) error {
-	tx, err := s.txRepo.GetByID(ctx, txID)
+	txn, err := s.txRepo.GetByID(ctx, txID)
 	if err != nil {
 		return err
 	}
-
-	if !tx.Status.CanTransitionTo(models.TxStatusCancelled) {
+	if !txn.Status.CanTransitionTo(models.TxStatusCancelled) {
 		return errors.New("transaction cannot be cancelled in its current state")
 	}
-
-	return s.txRepo.UpdateStatus(ctx, txID, models.TxStatusCancelled)
+	return s.txRepo.UpdateStatus(ctx, txID, models.TxStatusCancelled, "cancelled_at")
 }
 
 func (s *EscrowService) RaiseDispute(ctx context.Context, userIDStr string, req *models.RaiseDisputeRequest) (*models.Dispute, error) {
-	tx, err := s.txRepo.GetByID(ctx, req.TransactionID)
+	txn, err := s.txRepo.GetByID(ctx, req.TransactionID)
 	if err != nil {
 		return nil, errors.New("transaction not found")
 	}
-
-	if !tx.Status.CanTransitionTo(models.TxStatusDisputed) {
+	if !txn.Status.CanTransitionTo(models.TxStatusDisputed) {
 		return nil, errors.New("disputes cannot be raised in the current transaction state")
 	}
 
@@ -157,17 +149,14 @@ func (s *EscrowService) RaiseDispute(ctx context.Context, userIDStr string, req 
 		UpdatedAt:          now,
 	}
 
-	if err := s.txRepo.UpdateStatus(ctx, req.TransactionID, models.TxStatusDisputed); err != nil {
+	if err := s.txRepo.UpdateStatus(ctx, req.TransactionID, models.TxStatusDisputed, "updated_at"); err != nil {
 		return nil, err
 	}
-
 	return dispute, nil
 }
 
 func (s *EscrowService) ResolveDispute(ctx context.Context, disputeID uuid.UUID, agentIDStr string, resolution models.DisputeStatus, notes string) error {
-	_ = disputeID
-	_ = agentIDStr
-	_ = resolution
+	_, _, _ = disputeID, agentIDStr, resolution
 	_ = notes
 	return nil
 }

@@ -5,15 +5,17 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/skroda/backend/internal/models"
+	"github.com/skroda/backend/internal/repository"
 	"github.com/skroda/backend/internal/services"
 )
 
 type AuthHandler struct {
+	userRepo    *repository.UserRepository
 	authService *services.AuthService
 }
 
-func NewAuthHandler(authService *services.AuthService) *AuthHandler {
-	return &AuthHandler{authService: authService}
+func NewAuthHandler(userRepo *repository.UserRepository, authService *services.AuthService) *AuthHandler {
+	return &AuthHandler{userRepo: userRepo, authService: authService}
 }
 
 func (h *AuthHandler) Register(c *gin.Context) {
@@ -23,13 +25,46 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.authService.Register(c.Request.Context(), &req)
+	hashedPassword, err := h.authService.HashPassword(req.Password)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to process registration"})
 		return
 	}
 
-	c.JSON(http.StatusCreated, resp)
+	user := &models.User{
+		Phone:        req.Phone,
+		PasswordHash: hashedPassword,
+		FirstName:    req.FirstName,
+		LastName:     req.LastName,
+		Role:         models.UserRole(req.Role),
+		Status:       models.StatusActive,
+	}
+	if req.City != "" {
+		user.City = &req.City
+	}
+	if req.Region != "" {
+		user.Region = &req.Region
+	}
+
+	if err := h.userRepo.Create(c.Request.Context(), user); err != nil {
+		switch err {
+		case repository.ErrDuplicatePhone:
+			c.JSON(http.StatusConflict, gin.H{"error": "phone number already registered"})
+		case repository.ErrDuplicateEmail:
+			c.JSON(http.StatusConflict, gin.H{"error": "email already registered"})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create account"})
+		}
+		return
+	}
+
+	token, err := h.authService.GenerateToken(user.ID, user.Phone, string(user.Role))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "account created but failed to generate token"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, models.AuthResponse{Token: token, User: *user})
 }
 
 func (h *AuthHandler) Login(c *gin.Context) {
@@ -39,18 +74,34 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.authService.Login(c.Request.Context(), &req)
+	user, err := h.userRepo.GetByPhone(c.Request.Context(), req.Phone)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid phone or password"})
 		return
 	}
 
-	c.JSON(http.StatusOK, resp)
+	if !h.authService.CheckPassword(req.Password, user.PasswordHash) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid phone or password"})
+		return
+	}
+
+	if user.Status == models.StatusSuspended {
+		c.JSON(http.StatusForbidden, gin.H{"error": "account suspended, contact support"})
+		return
+	}
+
+	token, err := h.authService.GenerateToken(user.ID, user.Phone, string(user.Role))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate token"})
+		return
+	}
+
+	c.JSON(http.StatusOK, models.AuthResponse{Token: token, User: *user})
 }
 
 func (h *AuthHandler) Me(c *gin.Context) {
-	userID, _ := c.Get("user_id")
-	user, err := h.authService.GetUserByID(c.Request.Context(), userID.(string))
+	userID, _ := getUserID(c)
+	user, err := h.userRepo.GetByID(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 		return

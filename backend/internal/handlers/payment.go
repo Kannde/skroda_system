@@ -23,8 +23,8 @@ func (h *PaymentHandler) Initiate(c *gin.Context) {
 		return
 	}
 
-	userID, _ := c.Get("user_id")
-	payment, err := h.paymentService.Initiate(c.Request.Context(), userID.(string), &req)
+	userID, _ := getUserID(c)
+	payment, err := h.paymentService.Initiate(c.Request.Context(), userID.String(), &req)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

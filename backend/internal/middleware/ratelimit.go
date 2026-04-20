@@ -9,51 +9,74 @@ import (
 )
 
 type rateLimiter struct {
-	mu       sync.Mutex
-	requests map[string][]time.Time
-	limit    int
+	visitors map[string]*visitor
+	mu       sync.RWMutex
+	rate     int
 	window   time.Duration
 }
 
-func newRateLimiter(limit int, window time.Duration) *rateLimiter {
-	return &rateLimiter{
-		requests: make(map[string][]time.Time),
-		limit:    limit,
+type visitor struct {
+	count    int
+	lastSeen time.Time
+}
+
+func newRateLimiter(rate int, window time.Duration) *rateLimiter {
+	rl := &rateLimiter{
+		visitors: make(map[string]*visitor),
+		rate:     rate,
 		window:   window,
+	}
+	go rl.cleanup()
+	return rl
+}
+
+func (rl *rateLimiter) cleanup() {
+	for {
+		time.Sleep(1 * time.Minute)
+		rl.mu.Lock()
+		for ip, v := range rl.visitors {
+			if time.Since(v.lastSeen) > rl.window {
+				delete(rl.visitors, ip)
+			}
+		}
+		rl.mu.Unlock()
 	}
 }
 
-func (rl *rateLimiter) allow(key string) bool {
+func (rl *rateLimiter) allow(ip string) bool {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
-	now := time.Now()
-	cutoff := now.Add(-rl.window)
-
-	times := rl.requests[key]
-	var valid []time.Time
-	for _, t := range times {
-		if t.After(cutoff) {
-			valid = append(valid, t)
-		}
+	v, exists := rl.visitors[ip]
+	if !exists {
+		rl.visitors[ip] = &visitor{count: 1, lastSeen: time.Now()}
+		return true
 	}
 
-	if len(valid) >= rl.limit {
-		rl.requests[key] = valid
+	if time.Since(v.lastSeen) > rl.window {
+		v.count = 1
+		v.lastSeen = time.Now()
+		return true
+	}
+
+	if v.count >= rl.rate {
 		return false
 	}
 
-	rl.requests[key] = append(valid, now)
+	v.count++
+	v.lastSeen = time.Now()
 	return true
 }
 
-var limiter = newRateLimiter(100, time.Minute)
+func RateLimit(rate int, window time.Duration) gin.HandlerFunc {
+	limiter := newRateLimiter(rate, window)
 
-func RateLimit() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		ip := c.ClientIP()
-		if !limiter.allow(ip) {
-			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": "rate limit exceeded"})
+		if !limiter.allow(c.ClientIP()) {
+			c.JSON(http.StatusTooManyRequests, gin.H{
+				"error": "too many requests, please try again later",
+			})
+			c.Abort()
 			return
 		}
 		c.Next()

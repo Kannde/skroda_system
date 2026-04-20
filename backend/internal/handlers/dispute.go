@@ -24,8 +24,8 @@ func (h *DisputeHandler) Create(c *gin.Context) {
 		return
 	}
 
-	userID, _ := c.Get("user_id")
-	dispute, err := h.escrowService.RaiseDispute(c.Request.Context(), userID.(string), &req)
+	userID, _ := getUserID(c)
+	dispute, err := h.escrowService.RaiseDispute(c.Request.Context(), userID.String(), &req)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -50,9 +50,9 @@ func (h *DisputeHandler) Resolve(c *gin.Context) {
 		return
 	}
 
-	agentID, _ := c.Get("user_id")
+	agentID, _ := getUserID(c)
 	if err := h.escrowService.ResolveDispute(
-		c.Request.Context(), id, agentID.(string),
+		c.Request.Context(), id, agentID.String(),
 		models.DisputeStatus(body.Resolution), body.Notes,
 	); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

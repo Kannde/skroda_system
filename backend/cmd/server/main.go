@@ -3,21 +3,44 @@ package main
 import (
 	"log"
 
-	"github.com/joho/godotenv"
 	"github.com/skroda/backend/internal/config"
+	"github.com/skroda/backend/internal/database"
+	"github.com/skroda/backend/internal/handlers"
+	"github.com/skroda/backend/internal/repository"
 	"github.com/skroda/backend/internal/router"
+	"github.com/skroda/backend/internal/services"
 )
 
 func main() {
-	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found, using environment variables")
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	cfg := config.Load()
+	pool, err := database.NewPostgresPool(cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer pool.Close()
+	log.Println("Connected to PostgreSQL")
 
-	r := router.New(cfg)
+	userRepo := repository.NewUserRepository(pool)
+	txnRepo := repository.NewTransactionRepository(pool)
+	auditRepo := repository.NewAuditRepository(pool)
 
-	log.Printf("Starting Skroda server on port %s", cfg.Port)
+	authService := services.NewAuthService(cfg.JWTSecret, cfg.JWTExpiry)
+
+	authHandler := handlers.NewAuthHandler(userRepo, authService)
+	txnHandler := handlers.NewTransactionHandler(txnRepo, auditRepo)
+
+	h := &router.Handlers{
+		Auth:        authHandler,
+		Transaction: txnHandler,
+	}
+
+	r := router.Setup(cfg, h, authService)
+
+	log.Printf("Skroda API starting on port %s", cfg.Port)
 	if err := r.Run(":" + cfg.Port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
