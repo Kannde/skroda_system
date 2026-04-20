@@ -18,7 +18,7 @@ func NewDisputeHandler(escrowService *services.EscrowService) *DisputeHandler {
 }
 
 func (h *DisputeHandler) Create(c *gin.Context) {
-	var req models.CreateDisputeRequest
+	var req models.RaiseDisputeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -41,14 +41,20 @@ func (h *DisputeHandler) Resolve(c *gin.Context) {
 		return
 	}
 
-	var req models.ResolveDisputeRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	var body struct {
+		Resolution string `json:"resolution" binding:"required,oneof=resolved_buyer resolved_seller"`
+		Notes      string `json:"notes" binding:"required,min=10"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	agentID, _ := c.Get("user_id")
-	if err := h.escrowService.ResolveDispute(c.Request.Context(), id, agentID.(string), &req); err != nil {
+	if err := h.escrowService.ResolveDispute(
+		c.Request.Context(), id, agentID.(string),
+		models.DisputeStatus(body.Resolution), body.Notes,
+	); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

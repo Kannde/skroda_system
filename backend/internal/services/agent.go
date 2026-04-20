@@ -21,6 +21,9 @@ func (s *AgentService) ListAgents(ctx context.Context, city string) ([]models.Us
 }
 
 func (s *AgentService) GetAgentByUserID(ctx context.Context, userID string) (*models.User, error) {
-	id, _ := uuid.Parse(userID)
+	id, err := uuid.Parse(userID)
+	if err != nil {
+		return nil, err
+	}
 	return s.userRepo.GetByID(ctx, id)
 }

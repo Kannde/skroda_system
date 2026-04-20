@@ -53,20 +53,17 @@ func New(cfg *config.Config) *gin.Engine {
 
 	v1 := r.Group("/api/v1")
 
-	// Public routes
 	auth := v1.Group("/auth")
 	{
 		auth.POST("/register", authH.Register)
 		auth.POST("/login", authH.Login)
 	}
 
-	// Webhooks (no auth — validated by provider signature in prod)
 	webhooks := v1.Group("/webhooks")
 	{
 		webhooks.POST("/momo", webhookH.MoMoCallback)
 	}
 
-	// Protected routes
 	protected := v1.Group("/")
 	protected.Use(middleware.Auth(cfg.JWTSecret))
 	{
@@ -77,6 +74,7 @@ func New(cfg *config.Config) *gin.Engine {
 			txs.POST("", txH.Create)
 			txs.GET("", txH.List)
 			txs.GET("/:id", txH.Get)
+			txs.PATCH("/:id/status", txH.Transition)
 			txs.POST("/:id/confirm", txH.Confirm)
 			txs.POST("/:id/cancel", txH.Cancel)
 		}

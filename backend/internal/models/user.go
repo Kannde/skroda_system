@@ -15,34 +15,69 @@ const (
 	RoleAdmin  UserRole = "admin"
 )
 
+type AccountStatus string
+
+const (
+	StatusActive              AccountStatus = "active"
+	StatusSuspended           AccountStatus = "suspended"
+	StatusDeactivated         AccountStatus = "deactivated"
+	StatusPendingVerification AccountStatus = "pending_verification"
+)
+
 type User struct {
-	ID           uuid.UUID  `json:"id" db:"id"`
-	FullName     string     `json:"full_name" db:"full_name" validate:"required,min=2,max=100"`
-	Email        string     `json:"email" db:"email" validate:"required,email"`
-	Phone        string     `json:"phone" db:"phone" validate:"required"`
-	PasswordHash string     `json:"-" db:"password_hash"`
-	Role         UserRole   `json:"role" db:"role"`
-	City         string     `json:"city" db:"city"`
-	Country      string     `json:"country" db:"country"`
-	IsVerified   bool       `json:"is_verified" db:"is_verified"`
-	CreatedAt    time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at" db:"updated_at"`
-	DeletedAt    *time.Time `json:"deleted_at,omitempty" db:"deleted_at"`
+	ID                uuid.UUID     `json:"id" db:"id"`
+	Email             *string       `json:"email,omitempty" db:"email"`
+	Phone             string        `json:"phone" db:"phone"`
+	PhoneVerified     bool          `json:"phone_verified" db:"phone_verified"`
+	PasswordHash      string        `json:"-" db:"password_hash"`
+	FirstName         string        `json:"first_name" db:"first_name"`
+	LastName          string        `json:"last_name" db:"last_name"`
+	Role              UserRole      `json:"role" db:"role"`
+	Status            AccountStatus `json:"status" db:"status"`
+	City              *string       `json:"city,omitempty" db:"city"`
+	Region            *string       `json:"region,omitempty" db:"region"`
+	AvatarURL         *string       `json:"avatar_url,omitempty" db:"avatar_url"`
+	TrustScore        float64       `json:"trust_score" db:"trust_score"`
+	TotalTransactions int           `json:"total_transactions" db:"total_transactions"`
+	CreatedAt         time.Time     `json:"created_at" db:"created_at"`
+	UpdatedAt         time.Time     `json:"updated_at" db:"updated_at"`
+}
+
+type PublicProfile struct {
+	ID                uuid.UUID `json:"id"`
+	FirstName         string    `json:"first_name"`
+	LastName          string    `json:"last_name"`
+	City              *string   `json:"city,omitempty"`
+	Role              UserRole  `json:"role"`
+	TrustScore        float64   `json:"trust_score"`
+	TotalTransactions int       `json:"total_transactions"`
+}
+
+func (u *User) ToPublicProfile() PublicProfile {
+	return PublicProfile{
+		ID:                u.ID,
+		FirstName:         u.FirstName,
+		LastName:          u.LastName,
+		City:              u.City,
+		Role:              u.Role,
+		TrustScore:        u.TrustScore,
+		TotalTransactions: u.TotalTransactions,
+	}
 }
 
 type RegisterRequest struct {
-	FullName string   `json:"full_name" validate:"required,min=2,max=100"`
-	Email    string   `json:"email" validate:"required,email"`
-	Phone    string   `json:"phone" validate:"required"`
-	Password string   `json:"password" validate:"required,min=8"`
-	Role     UserRole `json:"role" validate:"required,oneof=buyer seller agent"`
-	City     string   `json:"city" validate:"required"`
-	Country  string   `json:"country" validate:"required"`
+	Phone     string `json:"phone" binding:"required"`
+	Password  string `json:"password" binding:"required,min=8"`
+	FirstName string `json:"first_name" binding:"required"`
+	LastName  string `json:"last_name" binding:"required"`
+	Role      string `json:"role" binding:"required,oneof=buyer seller agent"`
+	City      string `json:"city"`
+	Region    string `json:"region"`
 }
 
 type LoginRequest struct {
-	Email    string `json:"email" validate:"required,email"`
-	Password string `json:"password" validate:"required"`
+	Phone    string `json:"phone" binding:"required"`
+	Password string `json:"password" binding:"required"`
 }
 
 type AuthResponse struct {

@@ -24,9 +24,9 @@ func NewAuthService(userRepo *repository.UserRepository, jwtSecret string, jwtEx
 }
 
 func (s *AuthService) Register(ctx context.Context, req *models.RegisterRequest) (*models.AuthResponse, error) {
-	existing, _ := s.userRepo.GetByEmail(ctx, req.Email)
+	existing, _ := s.userRepo.GetByPhone(ctx, req.Phone)
 	if existing != nil {
-		return nil, errors.New("email already registered")
+		return nil, errors.New("phone number already registered")
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
@@ -34,15 +34,18 @@ func (s *AuthService) Register(ctx context.Context, req *models.RegisterRequest)
 		return nil, err
 	}
 
+	city := req.City
+	region := req.Region
 	user := &models.User{
 		ID:           uuid.New(),
-		FullName:     req.FullName,
-		Email:        req.Email,
 		Phone:        req.Phone,
 		PasswordHash: string(hash),
-		Role:         req.Role,
-		City:         req.City,
-		Country:      req.Country,
+		FirstName:    req.FirstName,
+		LastName:     req.LastName,
+		Role:         models.UserRole(req.Role),
+		Status:       models.StatusPendingVerification,
+		City:         &city,
+		Region:       &region,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
@@ -60,7 +63,7 @@ func (s *AuthService) Register(ctx context.Context, req *models.RegisterRequest)
 }
 
 func (s *AuthService) Login(ctx context.Context, req *models.LoginRequest) (*models.AuthResponse, error) {
-	user, err := s.userRepo.GetByEmail(ctx, req.Email)
+	user, err := s.userRepo.GetByPhone(ctx, req.Phone)
 	if err != nil || user == nil {
 		return nil, errors.New("invalid credentials")
 	}

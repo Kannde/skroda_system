@@ -24,8 +24,8 @@ func (h *TransactionHandler) Create(c *gin.Context) {
 		return
 	}
 
-	buyerID, _ := c.Get("user_id")
-	tx, err := h.escrowService.CreateTransaction(c.Request.Context(), buyerID.(string), &req)
+	sellerID, _ := c.Get("user_id")
+	tx, err := h.escrowService.CreateTransaction(c.Request.Context(), sellerID.(string), &req)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -59,6 +59,30 @@ func (h *TransactionHandler) List(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, txs)
+}
+
+func (h *TransactionHandler) Transition(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid transaction id"})
+		return
+	}
+
+	var body struct {
+		Status string `json:"status" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	userID, _ := c.Get("user_id")
+	if err := h.escrowService.Transition(c.Request.Context(), id, userID.(string), models.TransactionStatus(body.Status)); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "status updated"})
 }
 
 func (h *TransactionHandler) Confirm(c *gin.Context) {
