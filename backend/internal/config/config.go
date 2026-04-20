@@ -44,7 +44,7 @@ func Load() (*Config, error) {
 		Port:    getEnv("PORT", "8080"),
 		GinMode: getEnv("GIN_MODE", "debug"),
 
-		DatabaseURL: getEnv("DATABASE_URL", "postgres://skroda:skroda_dev@localhost:5432/skroda?sslmode=disable"),
+		DatabaseURL: getEnv("DATABASE_URL", "postgres://postgres:vitaminB@localhost:5432/skroda_main_db?sslmode=disable"),
 		RedisURL:    getEnv("REDIS_URL", "redis://localhost:6379"),
 
 		JWTSecret: getEnv("JWT_SECRET", "change-this-in-production"),
